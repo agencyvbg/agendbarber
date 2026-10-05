@@ -1,0 +1,23 @@
+{
+  "name": "barberhub",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @barberhub/web",
+    "dev:api": "npm run dev -w @barberhub/api",
+    "build": "npm run build --workspaces",
+    "test": "npm run test -w @barberhub/api",
+    "db:generate": "node scripts/database.cjs generate",
+    "db:migrate": "node scripts/database.cjs migrate",
+    "db:seed": "node scripts/database.cjs seed"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.9"
+  }
+}

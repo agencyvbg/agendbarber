@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: barberhub
+      POSTGRES_DB: barberhub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?required}
+    volumes:
+      [
+        'postgres-data:/var/lib/postgresql/data',
+        './infra/db/init.sh:/docker-entrypoint-initdb.d/01-role.sh:ro',
+      ]
+    ports: ['127.0.0.1:5432:5432']
+    healthcheck:
+      {
+        test: ['CMD-SHELL', 'pg_isready -U barberhub -d barberhub'],
+        interval: 5s,
+        timeout: 3s,
+        retries: 20,
+      }
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?required}
+    command: ['sh', '-c', 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    volumes: ['redis-data:/data']
+    ports: ['127.0.0.1:6379:6379']
+    healthcheck:
+      {
+        test: ['CMD-SHELL', 'REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep PONG'],
+        interval: 5s,
+        timeout: 3s,
+        retries: 20,
+      }
+    restart: unless-stopped
+  migrate:
+    build: { context: ., dockerfile: infra/Dockerfile.api }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://barberhub:${POSTGRES_PASSWORD}@postgres:5432/barberhub
+    command:
+      [
+        'node',
+        'node_modules/prisma/build/index.js',
+        'migrate',
+        'deploy',
+        '--schema',
+        'apps/api/prisma/schema.prisma',
+      ]
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: 'no'
+  api:
+    build: { context: ., dockerfile: infra/Dockerfile.api }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://barberhub_app:${APP_DB_PASSWORD}@postgres:5432/barberhub
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      UPLOAD_DIR: /app/uploads
+      LOG_FILE: /app/logs/api.log
+      PROXY_HOPS: '1'
+    ports: ['127.0.0.1:3000:3000']
+    volumes: ['uploads:/app/uploads', 'api-logs:/app/logs']
+    depends_on:
+      {
+        migrate: { condition: service_completed_successfully },
+        redis: { condition: service_healthy },
+      }
+    restart: unless-stopped
+  web:
+    build: { context: ., dockerfile: infra/Dockerfile.web }
+    ports: ['127.0.0.1:8080:80']
+    depends_on: [api]
+    restart: unless-stopped
+  loki:
+    image: grafana/loki:3.4.2
+    command: ['-config.file=/etc/loki/local-config.yaml']
+    volumes: ['loki-data:/loki']
+    profiles: ['observability']
+  alloy:
+    image: grafana/alloy:v1.8.1
+    command: ['run', '/etc/alloy/config.alloy']
+    volumes: ['./infra/alloy.alloy:/etc/alloy/config.alloy:ro', 'api-logs:/var/log/barberhub:ro']
+    depends_on: [loki]
+    profiles: ['observability']
+  grafana:
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-replace-before-deploying}
+    volumes:
+      [
+        'grafana-data:/var/lib/grafana',
+        './infra/grafana-datasources.yml:/etc/grafana/provisioning/datasources/loki.yml:ro',
+      ]
+    ports: ['127.0.0.1:3101:3000']
+    depends_on: [loki]
+    profiles: ['observability']
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:
+  api-logs:
+  loki-data:
+  grafana-data:

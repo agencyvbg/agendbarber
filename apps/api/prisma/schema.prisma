@@ -1,0 +1,377 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url = env("DATABASE_URL")
+}
+enum Role {
+  MASTER
+  EMPRESA
+  BARBEIRO
+  CLIENTE
+}
+enum AppointmentStatus {
+  AGENDADO
+  CONFIRMADO
+  EM_ATENDIMENTO
+  FINALIZADO
+  CANCELADO
+  NAO_COMPARECEU
+}
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+enum PaymentMethod {
+  PIX
+  DINHEIRO
+  CREDITO
+  DEBITO
+}
+enum EntryType {
+  INCOME
+  EXPENSE
+}
+model Tenant {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @map("tenant_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  @@map("tenants")
+}
+model Plan {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  code String @unique
+  name String
+  priceCents Int? @map("price_cents")
+  maxUnits Int? @map("max_units")
+  maxBarbers Int? @map("max_barbers")
+  maxClients Int? @map("max_clients")
+  features String[]
+  companies Company[]
+  @@map("plans")
+}
+model Company {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @map("tenant_id") @db.Uuid
+  name String
+  slug String @unique
+  status CompanyStatus @default(ACTIVE)
+  planId String @map("plan_id") @db.Uuid
+  plan Plan @relation(fields:[planId],references:[id])
+  timezone String @default("America/Sao_Paulo")
+  dueAt DateTime @map("due_at")
+  lastAccessAt DateTime? @map("last_access_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  @@unique([tenantId,id])
+  @@map("companies")
+}
+model User {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  email String
+  passwordHash String @map("password_hash")
+  googleSubject String? @map("google_subject")
+  role Role
+  active Boolean @default(true)
+  lastAccessAt DateTime? @map("last_access_at")
+  barber Barber?
+  client Client?
+  tokens RefreshToken[]
+  uploads Upload[]
+  @@unique([tenantId,id])
+  @@unique([tenantId,email])
+  @@unique([tenantId,googleSubject])
+  @@map("users")
+}
+model Unit {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  address String?
+  barbers Barber[]
+  appointments Appointment[]
+  hours BusinessHour[]
+  @@unique([tenantId,id])
+  @@map("units")
+}
+model Barber {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  unitId String @map("unit_id") @db.Uuid
+  userId String? @unique @map("user_id") @db.Uuid
+  unit Unit @relation(fields:[tenantId,unitId],references:[tenantId,id])
+  user User? @relation(fields:[tenantId,userId],references:[tenantId,id])
+  @@unique([tenantId,userId])
+  name String
+  email String?
+  phone String?
+  commissionPercent Int @default(60) @map("commission_percent")
+  goalCents Int @default(500000) @map("goal_cents")
+  active Boolean @default(true)
+  appointments Appointment[]
+  blocks ScheduleBlock[]
+  commissions Commission[]
+  @@unique([tenantId,id])
+  @@index([tenantId,active])
+  @@map("barbers")
+}
+model Client {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String? @unique @map("user_id") @db.Uuid
+  user User? @relation(fields:[tenantId,userId],references:[tenantId,id])
+  @@unique([tenantId,userId])
+  name String
+  phone String
+  email String?
+  birthDate DateTime? @db.Date @map("birth_date")
+  whatsappConsent Boolean @default(false) @map("whatsapp_consent")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  appointments Appointment[]
+  reviews Review[]
+  @@unique([tenantId,id])
+  @@unique([tenantId,phone])
+  @@index([tenantId,createdAt])
+  @@map("clients")
+}
+model Service {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  description String?
+  durationMinutes Int @map("duration_minutes")
+  priceCents Int @map("price_cents")
+  active Boolean @default(true)
+  appointments Appointment[]
+  @@unique([tenantId,id])
+  @@map("services")
+}
+model Appointment {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  unitId String @map("unit_id") @db.Uuid
+  barberId String @map("barber_id") @db.Uuid
+  clientId String @map("client_id") @db.Uuid
+  serviceId String @map("service_id") @db.Uuid
+  unit Unit @relation(fields:[tenantId,unitId],references:[tenantId,id])
+  barber Barber @relation(fields:[tenantId,barberId],references:[tenantId,id])
+  client Client @relation(fields:[tenantId,clientId],references:[tenantId,id])
+  service Service @relation(fields:[tenantId,serviceId],references:[tenantId,id])
+  startsAt DateTime @db.Timestamptz(3) @map("starts_at")
+  endsAt DateTime @db.Timestamptz(3) @map("ends_at")
+  priceCents Int @map("price_cents")
+  commissionPercent Int @map("commission_percent")
+  status AppointmentStatus @default(AGENDADO)
+  notes String?
+  createdAt DateTime @default(now()) @map("created_at")
+  payment Payment?
+  commission Commission?
+  review Review?
+  notifications Notification[]
+  @@unique([tenantId,id])
+  @@index([tenantId,barberId,startsAt])
+  @@index([tenantId,clientId,startsAt])
+  @@map("appointments")
+}
+model BusinessHour {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  unitId String @map("unit_id") @db.Uuid
+  unit Unit @relation(fields:[tenantId,unitId],references:[tenantId,id])
+  weekday Int
+  opensAt String @map("opens_at")
+  closesAt String @map("closes_at")
+  @@unique([tenantId,unitId,weekday])
+  @@map("business_hours")
+}
+model ScheduleBlock {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  barberId String @map("barber_id") @db.Uuid
+  barber Barber @relation(fields:[tenantId,barberId],references:[tenantId,id])
+  startsAt DateTime @db.Timestamptz(3) @map("starts_at")
+  endsAt DateTime @db.Timestamptz(3) @map("ends_at")
+  reason String
+  @@unique([tenantId,id])
+  @@index([tenantId,barberId,startsAt])
+  @@map("schedule_blocks")
+}
+model Commission {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  appointmentId String @unique @map("appointment_id") @db.Uuid
+  barberId String @map("barber_id") @db.Uuid
+  appointment Appointment @relation(fields:[tenantId,appointmentId],references:[tenantId,id])
+  @@unique([tenantId,appointmentId])
+  barber Barber @relation(fields:[tenantId,barberId],references:[tenantId,id])
+  percent Int
+  amountCents Int @map("amount_cents")
+  paidAt DateTime? @map("paid_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([tenantId,id])
+  @@map("commissions")
+}
+model Payment {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  appointmentId String @unique @map("appointment_id") @db.Uuid
+  appointment Appointment @relation(fields:[tenantId,appointmentId],references:[tenantId,id])
+  @@unique([tenantId,appointmentId])
+  amountCents Int @map("amount_cents")
+  method PaymentMethod
+  paidAt DateTime @default(now()) @map("paid_at")
+  entries FinancialEntry[]
+  @@unique([tenantId,id])
+  @@map("payments")
+}
+model Category {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  kind String
+  entries FinancialEntry[]
+  products StockProduct[]
+  @@unique([tenantId,id])
+  @@unique([tenantId,name,kind])
+  @@map("categories")
+}
+model FinancialEntry {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  categoryId String? @map("category_id") @db.Uuid
+  paymentId String? @unique @map("payment_id") @db.Uuid
+  category Category? @relation(fields:[tenantId,categoryId],references:[tenantId,id])
+  payment Payment? @relation(fields:[tenantId,paymentId],references:[tenantId,id])
+  type EntryType
+  description String
+  amountCents Int @map("amount_cents")
+  method PaymentMethod
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  @@unique([tenantId,id])
+  @@index([tenantId,occurredAt])
+  @@map("financial_entries")
+}
+model Supplier {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  name String
+  phone String?
+  email String?
+  products StockProduct[]
+  @@unique([tenantId,id])
+  @@map("suppliers")
+}
+model StockProduct {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  categoryId String? @map("category_id") @db.Uuid
+  supplierId String? @map("supplier_id") @db.Uuid
+  category Category? @relation(fields:[tenantId,categoryId],references:[tenantId,id])
+  supplier Supplier? @relation(fields:[tenantId,supplierId],references:[tenantId,id])
+  name String
+  sku String
+  quantity Int @default(0)
+  minimum Int @default(5)
+  costCents Int @map("cost_cents")
+  priceCents Int @map("price_cents")
+  movements StockMovement[]
+  @@unique([tenantId,id])
+  @@unique([tenantId,sku])
+  @@map("stock_products")
+}
+model StockMovement {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  productId String @map("product_id") @db.Uuid
+  product StockProduct @relation(fields:[tenantId,productId],references:[tenantId,id])
+  delta Int
+  reason String
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([tenantId,id])
+  @@map("stock_movements")
+}
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  appointmentId String? @map("appointment_id") @db.Uuid
+  appointment Appointment? @relation(fields:[tenantId,appointmentId],references:[tenantId,id])
+  kind String
+  recipient String
+  payload Json
+  status String @default("PENDING")
+  dueAt DateTime @map("due_at")
+  attempts Int @default(0)
+  sentAt DateTime? @map("sent_at")
+  dedupeKey String @unique @map("dedupe_key")
+  @@unique([tenantId,id])
+  @@index([status,dueAt])
+  @@map("notifications")
+}
+model RefreshToken {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user User @relation(fields:[tenantId,userId],references:[tenantId,id])
+  tokenHash String @unique @map("token_hash")
+  familyId String @map("family_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  @@unique([tenantId,id])
+  @@index([tenantId,familyId])
+  @@map("refresh_tokens")
+}
+model AuditLog {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String
+  resource String
+  resourceId String? @map("resource_id")
+  metadata Json?
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([tenantId,createdAt])
+  @@map("audit_logs")
+}
+model Review {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  appointmentId String @unique @map("appointment_id") @db.Uuid
+  clientId String @map("client_id") @db.Uuid
+  appointment Appointment @relation(fields:[tenantId,appointmentId],references:[tenantId,id])
+  @@unique([tenantId,appointmentId])
+  client Client @relation(fields:[tenantId,clientId],references:[tenantId,id])
+  rating Int
+  comment String?
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([tenantId,id])
+  @@map("reviews")
+}
+model Upload {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  user User @relation(fields:[tenantId,userId],references:[tenantId,id])
+  key String @unique
+  mimeType String @map("mime_type")
+  size Int
+  createdAt DateTime @default(now()) @map("created_at")
+  @@unique([tenantId,id])
+  @@map("uploads")
+}
+model SubscriptionEvent {
+  id String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  kind String
+  previousPlan String? @map("previous_plan")
+  nextPlan String? @map("next_plan")
+  createdAt DateTime @default(now()) @map("created_at")
+  @@index([tenantId,createdAt])
+  @@map("subscription_events")
+}
+
