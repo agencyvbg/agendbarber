@@ -15,6 +15,7 @@ import {
   BadRequestException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
@@ -624,11 +625,18 @@ export class ReportsController {
 @Roles('EMPRESA', 'BARBEIRO', 'CLIENTE')
 @Controller('uploads')
 export class UploadsController {
+  private ensurePersistentStorage() {
+    if (process.env.VERCEL === '1')
+      throw new ServiceUnavailableException(
+        'Uploads precisam de armazenamento persistente configurado para esta hospedagem.',
+      );
+  }
   private root = resolve(process.env.UPLOAD_DIR || 'uploads');
   constructor(@Inject(Database) private db: Database) {}
   @Post()
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
   async upload(@Req() req: AuthRequest, @UploadedFile() file?: Express.Multer.File) {
+    this.ensurePersistentStorage();
     if (!file) throw new BadRequestException('Arquivo obrigatório.');
     const b = file.buffer;
     const png =
@@ -665,6 +673,7 @@ export class UploadsController {
     @Param('id') id: string,
     @Res() res: Response,
   ) {
+    this.ensurePersistentStorage();
     const row = await this.db.transaction(req.actor, (tx) =>
       tx.upload.findFirst({
         where: {

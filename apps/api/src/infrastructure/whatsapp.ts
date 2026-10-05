@@ -85,6 +85,10 @@ export class NotificationWorker implements OnModuleInit, OnModuleDestroy {
   private polling = false;
   constructor(@Inject(Database) private db: Database) {}
   async onModuleInit() {
+    if (process.env.VERCEL === '1' || process.env.NOTIFICATIONS_MODE === 'external') {
+      logger.info('Worker de notificações externo; polling não iniciado nesta API.');
+      return;
+    }
     const provider = process.env.WHATSAPP_PROVIDER;
     if (!provider || provider === 'disabled') return;
     const adapter =

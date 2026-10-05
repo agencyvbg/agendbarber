@@ -21,6 +21,8 @@ SaaS para gestão de barbearias, com frontend React/Vite e API NestJS/PostgreSQL
 
 ## Stack
 
+Para publicar frontend e API no mesmo projeto Vercel, siga [Vercel com Services](docs/vercel.md). A configuração fica no `vercel.json` da raiz; PostgreSQL, Redis, worker de notificações e armazenamento persistente precisam de configuração operacional.
+
 React 19, TypeScript, Vite 6, Tailwind 4, componentes Shadcn/UI customizados sobre Radix, React Query, React Hook Form e Zod. API Node.js/NestJS 11, Prisma 6.19, JWT, refresh token rotativo, PostgreSQL 16, Redis, BullMQ, upload privado, logs JSON/Pino e perfil de observabilidade Loki/Alloy/Grafana. Versões efetivas estão no `package-lock.json`.
 
 ## Executar a demonstração visual
